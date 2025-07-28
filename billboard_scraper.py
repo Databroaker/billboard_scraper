@@ -1,84 +1,10 @@
 from datetime import datetime, timedelta
-from pprint import pprint
-
-import spotipy
 from bs4 import BeautifulSoup
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import pickle
-
-from spotipy import SpotifyOAuth
-
 from secrets import *
-
-
-class Spotify:
-    def __init__(self, client_id, client_secret, redirect_uri, scope):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.redirect_uri = redirect_uri
-        self.scope = scope
-
-        self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri=self.redirect_uri,
-            scope=self.scope
-            ))
-
-        self.playlists = dict()
-
-        self.load()
-
-    def load(self):
-        try:
-            with open("playlists.pkl", 'rb') as file:
-                self.playlists = pickle.load(file)
-        except:
-            pass
-
-    def save(self):
-        with open("playlists.pkl", 'wb') as file:
-            pickle.dump(self.playlists, file)
-
-    def add_track_to_playlist(self, songs_to_add, playlist_id=None):
-        existing_uris = []
-
-        offset = 0
-        while True:
-            results = self.sp.playlist_items(playlist_id, limit=100, offset=offset)
-            existing_uris.extend([item['track']['uri'] for item in results['items']])
-            if len(results['items']) < 100:
-                break
-            offset += 100
-        print(f"Found {len(existing_uris)} existing tracks in playlist")
-
-        song_uris = list(existing_uris)
-
-        for song in songs_to_add:
-            query = f"track:{song['title']} artist:{song['artist']}"
-            result = self.sp.search(q=query, type='track', limit=1)
-            try:
-                song_uri = result['tracks']['items'][0]['uri']
-                song_uris.append(song_uri)
-                print(f"Found: {song['title']} by {song['artist']} ({song_uri})")
-            except (IndexError, KeyError):
-                print(f"Track not found: {song['title']} by {song['artist']}")
-
-        song_uris = list(set(song_uris))
-
-        if song_uris:
-            chunk_size = 100
-            for i in range(0, len(song_uris), chunk_size):
-                chunk = song_uris[i:i + chunk_size]
-                self.sp.playlist_add_items(playlist_id=playlist_id, items=chunk)
-                print(f"Added {len(chunk)} songs to playlist in batch {i // chunk_size + 1}")
-            print(f"Total: Added {len(song_uris)} songs to playlist!")
-        else:
-            print("No songs were added to the playlist.")
-
-        self.playlists[playlist_id] = song_uris
-        self.save()
+from spotify_object import Spotify
 
 class BillboardScraper:
     def __init__(self):
@@ -98,19 +24,23 @@ class BillboardScraper:
             self.cleanup()
             self.save()
 
-        self.add_songs_to_playlist("rock-songs", 2010, 2010)
+        self.add_songs_to_playlist("rock-songs", 1900, 2099, randomize=True, reset=True)
 
-    def add_songs_to_playlist(self, chart_name, start_year, end_year):
+    def add_songs_to_playlist(self, chart_name, start_year, end_year, randomize=False, reset=False):
         to_add = []
+        blacklist = []
 
         for entry in self.chart_data:
             print(entry)
             if entry["chart"] == chart_name:
                 the_year = int(entry["year"])
                 if the_year >= start_year and the_year <= end_year :
-                    to_add.append(entry)
+                    bl_string = "{}:::{}".format(entry["artist"], entry["title"])
+                    if bl_string not in blacklist:
+                        to_add.append(entry)
+                        blacklist.append(bl_string)
 
-        self.spotifyObj.add_track_to_playlist(to_add, "5Pj5YUcfvquncJEHXNmZ44")
+        self.spotifyObj.add_track_to_playlist(to_add, "5Pj5YUcfvquncJEHXNmZ44", randomize=randomize, reset=reset)
 
 
 
