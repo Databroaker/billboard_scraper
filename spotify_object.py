@@ -22,7 +22,7 @@ class Spotify:
             ))
 
     # Function to search for a single song's URI
-    def search_song(self, sp, song, max_retries=5):
+    def search_song(self, sp, song, max_retries=100):
         query = f"track:{song['title']} artist:{song['artist']}"
         for attempt in range(max_retries):
             try:
