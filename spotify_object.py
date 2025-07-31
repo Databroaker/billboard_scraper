@@ -21,23 +21,8 @@ class Spotify:
             scope=self.scope
             ))
 
-        self.playlists = dict()
-
-        self.load()
-
-    def load(self):
-        try:
-            with open("playlists.pkl", 'rb') as file:
-                self.playlists = pickle.load(file)
-        except:
-            pass
-
-    def save(self):
-        with open("playlists.pkl", 'wb') as file:
-            pickle.dump(self.playlists, file)
-
     # Function to search for a single song's URI
-    def search_song(self, sp, song, max_retries=3):
+    def search_song(self, sp, song, max_retries=5):
         query = f"track:{song['title']} artist:{song['artist']}"
         for attempt in range(max_retries):
             try:
@@ -61,14 +46,6 @@ class Spotify:
         return None
 
     def add_track_to_playlist(self, songs_to_add, playlist_id=None, randomize=False, reset=False):
-        if reset:
-            try:
-                self.sp.playlist_replace_items(playlist_id=playlist_id, items=[])
-                print(f"Cleared all songs from playlist (ID: {playlist_id})")
-            except spotipy.exceptions.SpotifyException as e:
-                print(f"Error clearing playlist: {e}")
-                exit()
-
         existing_uris = []
 
         offset = 0
@@ -82,8 +59,16 @@ class Spotify:
 
         song_uris = list(existing_uris)
 
+        if randomize:
+            try:
+                self.sp.playlist_replace_items(playlist_id=playlist_id, items=[])
+                print(f"Cleared all songs from playlist (ID: {playlist_id})")
+            except spotipy.exceptions.SpotifyException as e:
+                print(f"Error clearing playlist: {e}")
+                exit()
+
         # Use ThreadPoolExecutor for concurrent searches
-        max_workers = 5  # Adjust based on rate limits and performance
+        max_workers = 3  # Adjust based on rate limits and performance
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Map songs to search function, passing Spotipy client and song dict
             results = executor.map(lambda song: self.search_song(self.sp, song), songs_to_add)
@@ -105,6 +90,3 @@ class Spotify:
             print(f"Total: Added {len(song_uris)} songs to playlist!")
         else:
             print("No songs were added to the playlist.")
-
-        self.playlists[playlist_id] = song_uris
-        self.save()

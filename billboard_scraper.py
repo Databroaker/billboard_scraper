@@ -9,28 +9,19 @@ from spotify_object import Spotify
 class BillboardScraper:
     def __init__(self):
         self.chart_data = []
-        self.load()
-        self.scrape = False
-
+        self.last_run = dict()
         self.spotifyObj = Spotify(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPE)
+        self.load()
 
-        #pprint(self.chart_data)
-
-        today = datetime.today().strftime("%m-%d-%Y")
-
-        if self.scrape:
-            self.scrape_chart_data("billboard-200", "01-01-1900", today, max_workers=100)
-            print("There are {} results".format(len(self.chart_data)))
-            self.cleanup()
-            self.save()
-
-        self.add_songs_to_playlist("rock-songs", 1900, 2099, randomize=True, reset=True)
-
-    def add_songs_to_playlist(self, chart_name, start_year, end_year, randomize=False, reset=False):
+    def add_songs_to_playlist(self, chart_name, playlist_id, start_year, end_year, randomize=False, reset=False, new_songs=[]):
         to_add = []
         blacklist = []
 
-        for entry in self.chart_data:
+        the_list = list(self.chart_data)
+        if not reset:
+            the_list = new_songs
+
+        for entry in the_list:
             print(entry)
             if entry["chart"] == chart_name:
                 the_year = int(entry["year"])
@@ -40,9 +31,7 @@ class BillboardScraper:
                         to_add.append(entry)
                         blacklist.append(bl_string)
 
-        self.spotifyObj.add_track_to_playlist(to_add, "5Pj5YUcfvquncJEHXNmZ44", randomize=randomize, reset=reset)
-
-
+        self.spotifyObj.add_track_to_playlist(to_add, playlist_id, randomize=randomize, reset=reset)
 
     def cleanup(self):
         chart_names = []
@@ -93,12 +82,17 @@ class BillboardScraper:
         try:
             with open("data.pkl", 'rb') as file:
                 self.chart_data = pickle.load(file)
+            with open("last_run.pkl", 'rb') as file:
+                self.last_run = pickle.load(file)
         except:
             pass
 
     def save(self):
+        self.cleanup()
         with open("data.pkl", 'wb') as file:
             pickle.dump(self.chart_data, file)
+        with open("last_run.pkl", 'wb') as file:
+            pickle.dump(self.last_run, file)
 
     def extract_chart_data(self, html_content, chart, year):
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -164,7 +158,41 @@ class BillboardScraper:
 
         self.chart_data += self.remove_duplicates_dicts(all_results)
 
-        return self.chart_data
+        return all_results
+
+    def run(self, tasks):
+        today = datetime.today().strftime("%m-%d-%Y")
+
+        for task in tasks:
+            chart_name = task[0]
+            playlist_id = task[1]
+            start_year = task[2]
+            end_year = task[3]
+            randomize = task[4]
+            reset = task[5]
+
+            try:
+                last_run = self.last_run[chart_name]
+                print("LAST RUN FOUND")
+            except:
+                last_run = "01-01-1940"
+                print("COULDNT FIND LAST RUN")
+
+            new_songs = self.scrape_chart_data(chart_name, last_run, today, max_workers=100)
+
+            self.last_run[chart_name] = today
+            self.save()
+
+            self.add_songs_to_playlist(chart_name, playlist_id, start_year, end_year, randomize=randomize, reset=reset, new_songs=new_songs)
+
+
 
 if __name__ == "__main__":
-    BillboardScraper()
+    bs = BillboardScraper()
+    bs.run([
+        #["dance-electronic-songs", "2dQ3l3tfs1RJVLvlMtP1AE", 2010, 2019, True, True],
+        #["r-b-hip-hop-songs", "0PqOIZndNeEa06NqfVgRWj", 1990, 1999, True, False],
+        #["rock-songs", "5Pj5YUcfvquncJEHXNmZ44", 1990, 2099, True, False],
+        #["hot-100", "7JfbAmvCqyUYMoGNS29Q6b", 2020, 2099, True, False],
+        ["billboard-200", "6U167rWiAmYDtQvZF2ZfBi", 2020, 2099, True, True]
+    ])
